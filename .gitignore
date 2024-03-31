@@ -1,6 +1,10 @@
+# config files
 .DS_Store
 __pycache__/
 .ipynb_checkpoints/
+.vscode
+
+# file extensions
 *.aux
 *.fdb_latexmk
 *.fls
@@ -8,4 +12,11 @@ __pycache__/
 *.pdf
 *.gz
 *.zip
+
+# folders
 image_classification/feature_backup*
+image_classification/Intel Training Dataset/
+image_classification/__MACOSX/Intel Training Dataset/
+exercises/example_images/
+image_classification/graphs/
+
