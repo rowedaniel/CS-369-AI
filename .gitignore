@@ -15,6 +15,8 @@ __pycache__/
 
 # folders
 image_classification/feature_backup*
+image_classification/test_backup.*
+image_classification/train_backup.*
 image_classification/Intel Training Dataset/
 image_classification/__MACOSX/Intel Training Dataset/
 exercises/example_images/
