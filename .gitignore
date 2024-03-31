@@ -1,3 +1,11 @@
 .DS_Store
 __pycache__/
 .ipynb_checkpoints/
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.pdf
+*.gz
+*.zip
+image_classification/feature_backup*
