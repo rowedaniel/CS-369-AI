@@ -1,0 +1,88 @@
+\documentclass{article}
+
+\usepackage{bm}
+\usepackage{enumerate}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{amsthm, amsmath, amssymb}
+\usepackage{psfrag}
+\usepackage{multicol}
+\usepackage{color}
+\usepackage{url}
+\usepackage{setspace}\onehalfspacing
+
+\setlength{\hoffset}{-0.5in}
+\addtolength{\textwidth}{1.0in}
+\setlength{\voffset}{-0.5in}
+\addtolength{\textheight}{1.0in}
+
+\begin{document}
+\pagenumbering{gobble}
+
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}l l l}
+\textbf{CS-369} & \textbf{The Binomial Theorem} & Daniel Neshyba-Rowe\\
+\textbf{Spring 2024} & Due: Thursday, February 29th\\
+\hline\hline
+\end{tabular*} \\
+
+\section{Overview}
+
+In this project, I experimented with various combinations of feature vectors, using Histograms of Oriented Gradients (HOGs), luminosity histograms, histograms of RGB data, and embedded pretrained networks.
+Additionally, principle component analysis (PCA) was used to lower the dimensionality of feature vectors, to reduce noise, improve training results, and encourage more generalizability in models.
+Two classifiers were used, scikit-learn's SVC (support vector classifier), and XGBoost with gbtree.
+Gridsearch was used to search for optimal hyperparameters using feature vectors produced from a resnet50 embedding.
+
+\section{Compute Time}
+
+Other than Gridsearch, the vast majority of program time is occupied by extracting feature vectors from the images, clocking in at over an hour on my computer for the whole dataset.
+The images themselves take less than $10$ seconds to load, while extracting HOG data and running resnet50 are much more costly.
+
+Training SVC and XGBoost are surprisingly not especially costly, taking only minutes rather than dozens of minutes or hours.
+Testing is likewise quite cheap in regards to time.
+
+\section{Feature Vector}
+
+After trying many different combinations, I settled on using HOG, embedded resnet50, and a luminence histogram.
+The embedded network itself is almost enough to reach $90$ percent accuracy on my reserved testing set, but it struggles a bit on a few classes, so I included the other features in the hopes that they would cover some of these shortcomings.
+Because this inflates the feature vectors to a hefty $3000+$ axes, I then use PCA to narrow it to a more reasonable number.
+
+\section{Classifier}
+
+As previously mentioned, I tried both SVC and XGBoost.
+Pictured in figure \ref*{fig:svc} are the results for Gridsearch with SVC.
+Overall, XGBoost seemed to be slightly more accurate, but a bit slower, so I opted to use Gridsearch on SVC instead.
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.45\linewidth}
+		\includegraphics[width=\linewidth]{graphs/linear_svc.png}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.45\linewidth}
+		\includegraphics[width=\linewidth]{graphs/rbf_svc.png}
+	\end{subfigure}
+    \caption{Results of Gridsearch for the SVC classifier using embedded resnet50 as features.
+    The legend shows tried values for gamma.
+    Note that there is no appreciable difference in accuracy between any option for the linear kernel,
+    while ``auto'' and ``scale'' for gamma do significantly better for rbf kernels.
+    }\label{fig:svc}
+\end{figure}
+
+\section{Accuracy}
+
+The overall train accuracy was $100\%$, and the test accuracy was $90\%$. I suspect I'm overfitting, but ran out of time.
+
+\begin{figure}
+    \centering
+    \begin{subfigure}[b]{0.45\linewidth}
+		\includegraphics[width=\linewidth]{graphs/train_results.png}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.45\linewidth}
+		\includegraphics[width=\linewidth]{graphs/test_results.png}
+	\end{subfigure}
+    \caption{Test and train results for final model
+    }\label{fig:linear_svc}
+\end{figure}
+
+
+\end{document}
+
