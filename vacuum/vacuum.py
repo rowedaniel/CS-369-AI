@@ -13,7 +13,7 @@ def generate_world(width):
         elif r < 1.0:
             return "dirt"
         else:
-            return "clear"
+            return "clean"
 
     return [[f() for _ in range(width)] for _ in range(width)]
 
@@ -30,6 +30,7 @@ def place_agent(world):
 def draw_world(world, agent):
     width = len(world)
     stddraw.clear()
+
     for x in range(width):
         for y in range(width):
             here = world[x][y]
@@ -45,38 +46,6 @@ def draw_world(world, agent):
                     [x - 0.45, x + 0.45, x], [y - 0.45, y - 0.45, y + 0.45]
                 )
 
-            # TODO: debug only
-            sx, sy = run.start_pos
-            if (x - sx, y - sy) in [node.get_pos() for node in run.mem.frontier]:
-                stddraw.setPenColor(stddraw.GREEN)
-                stddraw.filledCircle(x, y, 0.2)
-            if (x - sx, y - sy) == run.mem.current_node.get_pos():
-                stddraw.setPenColor(stddraw.RED)
-                stddraw.filledCircle(x, y, 0.2)
-            if (x - sx, y - sy) in run.mem.explored:
-                node = run.mem.explored[(x - sx, y - sy)]
-                parent = node.get_parent()
-                if parent is not None:
-                    xp, yp = parent.get_pos()
-                    stddraw.setPenColor(stddraw.BLACK)
-                    stddraw.line(x, y, xp + sx, yp + sy)
-            for node in run.mem.frontier:
-                if node.get_pos() != (x - sx, y - sy):
-                    continue
-                xp, yp = node.parent.get_pos()
-                stddraw.setPenColor(stddraw.GREEN)
-                stddraw.line(x, y, xp + sx, yp + sy)
-
-    node = run.mem.current_node
-    x, y = None, None
-    while node is not None:
-        xp, yp = node.get_pos()
-        if x is not None and y is not None:
-            stddraw.setPenColor(stddraw.RED)
-            stddraw.line(x + sx, y + sx, xp + sx, yp + sy)
-        x, y = xp, yp
-        node = node.get_parent()
-
     stddraw.show(10)
 
 
@@ -90,13 +59,16 @@ def take_action(world, agent, agent_function, knowledge="single"):
     height = len(world[0])
 
     if knowledge == "single":
-        percept = [world[x][y]]
+        percept = world[x][y] == "dirt"
     elif knowledge == "surrounding":
-        percep = [
+        percept = [
             world[x + ox][y + oy]
-            for (ox, oy) in ((0, 0), (-1, 0), (0, -1), (1, 0), (0, 1))
             if 0 <= x + ox < width and 0 <= y + oy < height
+            else None
+            for (ox, oy) in ((0, 0), (0, 1), (0, -1), (1, 0), (-1, 0))
         ]
+    else:
+        percept = (world, agent)
     action = agent_function(percept)
 
     if action == "clean":
@@ -127,6 +99,7 @@ def run(
     loss_function,
     agent_reset_function=lambda: None,
     animate=True,
+    knowledge="single",
 ):
     agent_reset_function()
     if animate:
@@ -135,17 +108,13 @@ def run(
     world = generate_world(map_width)
     agent = place_agent(world)
 
-    # TODO: debug only
-    run.mem = agent_function.mem
-    run.start_pos = agent
-
     loss = 0
     if animate:
         draw_world(world, agent)
     for i in range(max_steps):
         dirt_remaining = count_dirt(world)
         if dirt_remaining > 0:
-            agent = take_action(world, agent, agent_function)
+            agent = take_action(world, agent, agent_function, knowledge=knowledge)
             if loss_function == "actions":
                 loss += 1
             elif loss_function == "dirt":
@@ -173,6 +142,7 @@ def many_runs(
     agent_function,
     loss_function,
     agent_reset_function=lambda: None,
+    knowledge="single",
 ):
     return statistics.mean(
         [
@@ -183,6 +153,7 @@ def many_runs(
                 loss_function,
                 agent_reset_function,
                 False,
+                knowledge,
             )
             for i in range(runs)
         ]

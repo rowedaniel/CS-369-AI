@@ -6,357 +6,186 @@ The run function will generate a map showing the animation of the robot, and ret
 You will need to implement a run_all function, which executes the many_runs function for all 12 of your agents (with the correct parameters) and sums up their returned losses as a single value. Your run_all function should use the following parameters for each agent: map_width=20, max_steps=50000 runs=100.
 """
 
-from vacuum import *
-
-directions = ["north", "south", "east", "west"]
-dir_values = [(0, 1), (0, -1), (1, 0), (-1, 0)]
-prevdirection = "null"
-
-
-def opposite_direction(direction):
-    return direction ^ 1
+from vacuum import run, many_runs
+import random
+from mapping_memory import MappingMemory
+from agent_common import directions, dir_values
 
 
 def random_agent(percept):
-    if percept[0] == "dirt":
+    if percept:
         return "clean"
 
     return random.choice(directions)
-
-
-class MappingNode:
-    def __init__(
-        self,
-        parent=None,
-        pos=(0, 0),
-        cost=-1,
-    ):
-        self.parent = parent
-        self.children = [None for i in range(4)]
-        self.pos = pos
-        self.cost = cost
-        self.isWall = False
-        self.direction = None
-
-    def set_parent(self, parent, direction):
-        if parent is None:
-            return
-        if parent.get_parent() == self:
-            print("attempting to create a circular parent chain")
-            raise ValueError("AAAA")
-        if self.parent is not None:
-            print("attempting to set parent when one already exists")
-            new_dir = opposite_direction(self.direction)
-            self.add_child(self.parent, new_dir)
-        self.parent = parent
-        self.set_cost(parent.get_cost() + 1)
-        self.set_direction(direction)
-        if self.pos == (0, 1):
-            print("0,1 has children:")
-            print(["None" if c is None else c.get_pos() for c in self.children])
-        # if self.direction is not None:
-        #     x, y = parent.get_pos()
-        #     ox, oy = dir_values[self.direction]
-        #     self.pos = (x + ox, y + oy)
-
-    def remove_parent(self):
-        self.parent = None
-        self.direction = -1
-
-    def get_parent(self):
-        return self.parent
-
-    def add_child(self, child, direction):
-        if self.isWall:
-            print("attempting to add a child to a wall >:[")
-        if self.children[direction] is not None:
-            print("attempting to set child when one already exists")
-        self.children[direction] = child
-
-    def swap_root(self, direction):
-        # print(
-        #     "swapping",
-        #     "(",
-        #     self,
-        #     ")",
-        #     self.get_pos(),
-        #     "with direction",
-        #     directions[direction],
-        # )
-        if self.parent is not None:
-            print("attempting to swap root with a node that is not a root")
-            return
-        child = self.children[direction]
-        if child is None:
-            print("attempting to swap root with a null child")
-            return
-        # print("( old root:", self, "new root:", child, ")", child.get_pos())
-
-        self.children[direction] = None
-        child.remove_parent()
-        op_dir = opposite_direction(direction)
-        child.add_child(self, op_dir)
-        self.set_parent(child, op_dir)
-        # print("finished swapping")
-        return child
-
-    def get_children(self):
-        return self.children
-
-    def has_child(self, direction):
-        return self.children[direction] is not None
-
-    def get_pos(self):
-        return self.pos
-
-    def get_cost(self):
-        return self.cost
-
-    def set_cost(self, cost):
-        self.cost = cost
-        for child in self.children:
-            if child is None:
-                continue
-            if child.get_parent() != self:
-                continue
-            child.set_cost(self.cost + 1)
-
-    def is_wall(self):
-        return self.isWall
-
-    def set_wall(self, isWall):
-        self.isWall = isWall
-
-    def get_direction(self):
-        return self.direction
-
-    def set_direction(self, direction):
-        self.direction = direction
-
-
-class MappingMemory:
-    def __init__(self):
-        # TODO: make frontier a priority queue which prioritizes unexplored nearby nodes
-        self.frontier = []
-        self.explored = {}
-        self.current_node = MappingNode(cost=0)
-        self.current_pos = (0, 0)
-        self.prev_dir = None
-
-    def get_next_direction(self):
-        if self.current_node is None:
-            return -1
-        node = self.current_node
-        direction = -1
-
-        # print(
-        #     "getting next direction. Goal is",
-        #     self.current_node.get_pos(),
-        #     "and currently at",
-        #     self.current_pos,
-        #     end=". ",
-        # )
-
-        while node.get_pos() != self.current_pos:
-            parent = node.get_parent()
-            if parent is None:
-                print("Reached a parent of 'None'")
-                break
-            direction = node.get_direction()
-            node = parent
-        # print(f"decided to go {direction} ({directions[direction]})")
-        return direction
-
-    def move(self, direction):
-        x, y = self.current_pos
-        ox, oy = dir_values[direction]
-        self.prev_dir = direction
-        self.current_pos = (x + ox, y + oy)
-        print(f"moving from {(x,y)} to {self.current_pos} ({directions[direction]})")
-        self.update_costs((x, y), direction)
-
-    def undo_move(self):
-        if self.prev_dir is None:
-            print("Cannot undo")
-            return
-        self.move(opposite_direction(self.prev_dir))
-        self.prev_dir = None
-
-    def update_costs(self, prev_pos, direction):
-        # update costs
-        if prev_pos not in self.explored:
-            print("somehow just left an unexplored tile??")
-            return
-        prev_root = self.explored[prev_pos]
-
-        new_root = prev_root.swap_root(direction)
-        if new_root is None:
-            print("failed to swap")
-            raise ValueError("AAAA")
-            return
-        new_root.set_cost(0)
-        for node in new_root.get_children():
-            # print("updating", node, "route")
-            self.update_cheaper_routes(node)
-
-        # self.traverse_tree(new_root)
-
-    def traverse_tree(self, node, prefix="", explored=None):
-        if node is None:
-            return
-        if explored is None:
-            explored = set()
-        if node in explored:
-            return
-        explored.add(node)
-        print(f"{prefix}{node.get_pos()}:")
-        parent = node.get_parent()
-        if parent is None:
-            print(f"{prefix} parent: None")
-        else:
-            print(f"{prefix} parent: {parent.get_pos()}")
-        for i, child in enumerate(node.get_children()):
-            print(f"{prefix} child {i}:")
-            self.traverse_tree(child, prefix + " ", explored)
-
-    def set_wall(self):
-        self.current_node.set_wall(True)
-        self.explored[self.current_node.get_pos()] = self.current_node
-        self.current_node = None
-        self.undo_move()
-
-    def get_current_node(self):
-        return self.current_node
-
-    def pop_frontier(self):
-        if self.current_node is not None:
-            print("attempting to pop frontier when already pursuing a node")
-            return
-        random.shuffle(self.frontier)
-        self.current_node = self.frontier.pop()
-
-    def update_cheaper_routes(self, node):
-        if node is None:
-            return
-        print("updating route for node", node.get_pos())
-        # check for cheaper routes
-        # print("-" * 100 + "updating routes")
-        x, y = node.get_pos()
-        for i, (ox, oy) in enumerate(dir_values):
-            possible_parent_pos = (x - ox, y - oy)
-            if possible_parent_pos not in self.explored:
-                continue
-            possible_parent = self.explored[possible_parent_pos]
-            current_parent = node.get_parent()
-            if (
-                current_parent is None
-                or possible_parent.get_cost() < current_parent.get_cost()
-            ):
-                print("cheaper route found")
-                node.set_parent(possible_parent, i)
-                for child in node.get_children():
-                    print("recursing")
-                    self.update_cheaper_routes(child)
-            else:
-                print("no cheaper route found than through", current_parent.get_pos())
-                print(
-                    "cost", possible_parent.get_cost(), "vs", current_parent.get_cost()
-                )
-
-    def expand_node(self):
-        node = self.current_node
-        if node is None:
-            return
-
-        print("expanding node", node.get_pos())
-        self.explored[node.get_pos()] = node
-        self.current_node = None
-
-        # add nodes to frontier
-        x, y = node.get_pos()
-        named_frontier = {n.get_pos(): n for n in self.frontier}
-        for i, new_pos in enumerate((x + ox, y + oy) for ox, oy in dir_values):
-            # check if node already accounted for
-            if new_pos in self.explored or new_pos in named_frontier:
-                if new_pos in self.explored:
-                    child = self.explored[new_pos]
-                if new_pos in named_frontier:
-                    child = named_frontier[new_pos]
-                if child != node.get_parent():
-                    # provided it's not the current node's parent, then connect it
-                    node.add_child(child, i)
-                    old_parent = child.get_parent()
-                    if node.get_cost() < old_parent.get_cost():
-                        print(
-                            f"clobbering old parent {child.get_parent().get_pos()} of node {child.get_pos()} in favor of {node.get_pos()}"
-                        )
-                        child.set_parent(node, i)
-                continue
-
-            new_node = MappingNode(pos=new_pos)
-            node.add_child(new_node, i)
-            new_node.set_parent(node, i)
-            self.update_cheaper_routes(new_node)
-            self.frontier.append(new_node)
-            # print("new node on frontier:", new_pos, i, f"({directions[i]})")
-
-    def print_status(self):
-        print("\n\ntarget node:", self.current_node)
-        print("explored:")
-        for pos, node in self.explored.items():
-            print(
-                f"    {pos}: pos {node.pos} direction {node.direction} cost {node.cost}"
-            )
-        print("frontier:")
-        for node in self.frontier:
-            print(f"    pos {node.pos} direction {node.direction} cost {node.cost}")
 
 
 mappingMemory = MappingMemory()
 
 
 def mapping_agent_sight_1(percept):
-    # input()
-    if percept[0] == "wall":
-        print("Error: actor is on a wall")
-        return random.choice(directions)
+    expected_tile = mappingMemory.get_next_expected_tile_type()
+    if expected_tile == "dirt":
+        # at the target node!
+        if not percept:
+            # encountered a wall
+            mappingMemory.set_target_type("wall")
+            mappingMemory.retarget()
+        else:
+            # update last timestep's move
+            mappingMemory.move()
+            mappingMemory.expand_target()
+            mappingMemory.retarget()
+            mappingMemory.set_root_type("clean")
+            return "clean"
+    else:
+        # update last timestep's move
+        mappingMemory.move()
 
-    if percept[0] == "dirt":
-        # on dirt, assume made it to destination.
-        mappingMemory.expand_node()
-        mappingMemory.pop_frontier()
-        # mappingMemory.print_status()
-        print("cleaning")
+    new_dir = mappingMemory.get_next_direction()
+    if new_dir == -1:
+        # This only runs if there's an unreachable dirty tile
+        return random_agent(percept)
+    return directions[new_dir]
+
+
+def mapping_agent_sight_5(percept):
+    expected_tile = mappingMemory.get_next_expected_tile_type()
+    mappingMemory.move()
+
+    if expected_tile == "dirt":
+        # at the target node!
+        mappingMemory.expand_target()
+
+    # update surroundings
+    x, y = mappingMemory.get_root_pos()
+    for direction, node_type in enumerate(percept[1:]):
+        dx, dy = dir_values[direction]
+        xp, yp = (x + dx, y + dy)
+        if node_type is None:
+            mappingMemory.set_pos_type((xp, yp), "wall")
+        else:
+            mappingMemory.set_pos_type((xp, yp), node_type)
+
+    if expected_tile == "dirt":
+        # at the target node!
+        mappingMemory.retarget()
+        mappingMemory.set_root_type("clean")
         return "clean"
+    else:
+        # update last timestep's move
+        mappingMemory.move()
 
-    # on a clean tile
-    # print("on a clean tile")
-    next_dir = mappingMemory.get_next_direction()
+    new_dir = mappingMemory.get_next_direction()
+    if new_dir == -1:
+        # This only runs if there's an unreachable dirty tile
+        return random_agent(percept[0] == "dirt")
+    return directions[new_dir]
 
-    if next_dir == -1:
-        # print("on a clean tile when a dirty tile was expected")
-        # expected to be on a dirty tile
-        mappingMemory.set_wall()
-        mappingMemory.pop_frontier()
-        # mappingMemory.print_status()
-        next_dir = mappingMemory.get_next_direction()
-    if next_dir == -1:
-        print(
-            "still don't know where going, despite having recalculated route just now??"
-        )
-
-    mappingMemory.move(next_dir)
-    return directions[next_dir]
-
-
-# TODO: debug only
-mapping_agent_sight_1.mem = mappingMemory
 
 ## input args for run: map_width, max_steps, agent_function, loss_function
 
-random.seed(0)
-run(20, 50000, mapping_agent_sight_1, "actions")
+# run(20, 50000, random_agent, "actions")
+# TODO: better singleton management, prevent looping back on self when pushing the only possible frontier
+random.seed(9)
+mappingMemory.likely_border_weight = 2
+mappingMemory.possible_border_weight = 1
+run(20, 50000, mapping_agent_sight_5, "actions", knowledge="surrounding")
+# random.seed(0)
+# print(
+#     "daniel:",
+#     many_runs(
+#         20,
+#         50000,
+#         20,
+#         mapping_agent_sight_1,
+#         "actions",
+#         agent_reset_function=mappingMemory.reset,
+#         knowledge="single",
+#     ),
+# )
 
 ## input args for many_runs: map_width, max_steps, runs, agent_function, loss_function
 
-# print(many_runs(20, 50000, 10, random_agent, 'dirt'))
+
+# NOTE:
+# for:
+# run_params = {
+# "map_width": 20,
+# "max_steps": 10000,
+# "runs": 40,
+# "loss_function": "dirt",
+# "knowledge": "single",
+# }
+# best hyperparams were
+
+# for
+# run_params = {
+#     "map_width": 20,
+#     "max_steps": 10000,
+#     "runs": 40,
+#     "loss_function": "actions",
+#     "knowledge": "single",
+# }
+# best hyperparams were likely=100, possible=4
+
+# seed = 0
+
+# likely_weights = (2, 4, 8, 16, 32, 64, 80, 90, 100, 110, 128)
+# possible_weights = (0, 1, 2, 3, 4, 5, 6, 7, 8, 16)
+# res = [[0 for _ in likely_weights] for _ in possible_weights]
+
+# run_params = {
+#     "map_width": 20,
+#     "max_steps": 10000,
+#     "runs": 20,
+#     "loss_function": "actions",
+#     "knowledge": "single",
+# }
+
+# random.seed(seed)
+# print(
+#     "random:",
+#     many_runs(
+#         run_params["map_width"],
+#         run_params["max_steps"],
+#         run_params["runs"],
+#         random_agent,
+#         run_params["loss_function"],
+#         knowledge=run_params["knowledge"],
+#     ),
+# )
+# for i, possible_weight in enumerate(possible_weights):
+#     for j, likely_weight in enumerate(likely_weights):
+#         mappingMemory.likely_border_weight = likely_weight
+#         mappingMemory.possible_border_weight = possible_weight
+
+#         random.seed(seed)
+#         res[i][j] = many_runs(
+#             run_params["map_width"],
+#             run_params["max_steps"],
+#             run_params["runs"],
+#             mapping_agent_sight_1,
+#             run_params["loss_function"],
+#             agent_reset_function=mappingMemory.reset,
+#             knowledge=run_params["knowledge"],
+#         )
+#         print(
+#             f"daniel with likely weight: {likely_weight} and possible weight: {possible_weight}",
+#             res[i][j],
+#         )
+
+# import matplotlib.pyplot as plt
+# import numpy as np
+
+# fig, ax = plt.subplots()
+# im = ax.imshow(res)
+
+# # Show all ticks and label them with the respective list entries
+# ax.set_xticks(np.arange(len(likely_weights)), labels=likely_weights)
+# ax.set_yticks(np.arange(len(possible_weights)), labels=possible_weights)
+# cbar = ax.figure.colorbar(im, ax=ax)
+# for i in range(len(possible_weights)):
+#     for j in range(len(likely_weights)):
+#         score = res[i][j] / 1000
+#         text = ax.text(j, i, f"{score:.3f}", ha="center", va="center", color="w")
+# plt.show()
