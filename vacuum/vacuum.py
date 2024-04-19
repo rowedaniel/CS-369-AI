@@ -62,9 +62,11 @@ def take_action(world, agent, agent_function, knowledge="single"):
         percept = world[x][y] == "dirt"
     elif knowledge == "surrounding":
         percept = [
-            world[x + ox][y + oy]
-            if 0 <= x + ox < width and 0 <= y + oy < height
-            else None
+            (
+                world[x + ox][y + oy]
+                if 0 <= x + ox < width and 0 <= y + oy < height
+                else None
+            )
             for (ox, oy) in ((0, 0), (0, 1), (0, -1), (1, 0), (-1, 0))
         ]
     else:
@@ -74,6 +76,8 @@ def take_action(world, agent, agent_function, knowledge="single"):
     if action == "clean":
         world[x][y] = "clean"
         return agent
+    elif action == "unsolvable":
+        return None
     else:
         x, y = vector_sum(agent, OFFSETS[action])
         if 0 <= x < width and 0 <= y < width and world[x][y] != "wall":
@@ -115,6 +119,13 @@ def run(
         dirt_remaining = count_dirt(world)
         if dirt_remaining > 0:
             agent = take_action(world, agent, agent_function, knowledge=knowledge)
+            if agent is None:
+                # reported to be unsolvable, so add up the remainder of the the cost
+                if loss_function == "actions":
+                    return loss + max_steps - i
+                elif loss_function == "dirt":
+                    return loss + dirt_remaining * (max_steps - i)
+
             if loss_function == "actions":
                 loss += 1
             elif loss_function == "dirt":
@@ -132,7 +143,6 @@ def run(
             if stddraw.mousePressed():
                 exit()
             stddraw.show(0)
-    print("did run; got", loss)
     return loss
 
 
