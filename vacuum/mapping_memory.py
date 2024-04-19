@@ -11,7 +11,12 @@ class MappingMemory:
         possible_border_weight=2,
         singleton_weight=1,
     ):
-        self.reset()
+        self.reset(path_weight, likely_border_weight, possible_border_weight, singleton_weight)
+
+        # caches to save time
+        self.border = {}
+
+    def reset(self, path_weight, likely_border_weight, possible_border_weight, singleton_weight):
 
         # hyperparams
         self.path_weight = path_weight
@@ -19,18 +24,14 @@ class MappingMemory:
         self.possible_border_weight = possible_border_weight
         self.singleton_weight = singleton_weight
 
-        # caches to save time
-        self.border = {}
-
-    def reset(self):
         # O(1) stuff:
         self.next_dir = -1
         self.current_target = MappingNode(cost=0)
         self.root = self.current_target
 
         # O(n) stuff:
-        self.frontier = []
-        self.explored = {(0, 0): self.current_target}
+        self.frontier = [] # max size: map size + 2 in both dimensions (since it will assume borders are a set of walls)
+        self.explored = {(0, 0): self.current_target} # some overlap with frontier, but always smaller than map size.
 
     def cost_function(self, node):
         path_cost = node.get_cost()
@@ -187,8 +188,6 @@ class MappingMemory:
                 child.set_parent(node, direction)
                 child.set_cost(new_cost)
 
-                # note: don't really like this,
-                # since it requires looping through frontier
                 if child not in self.frontier:
                     self.update_costs(child)
 

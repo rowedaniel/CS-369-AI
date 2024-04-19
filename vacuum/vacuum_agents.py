@@ -10,16 +10,33 @@ from vacuum import run, many_runs
 import random
 from mapping_memory import MappingMemory
 from agent_common import directions, dir_values
+from tsp import TSP, mapping_agent_sight_5
+from A_star import A_star
+
+# all memory objects
+mappingMemory = MappingMemory()
 
 
-def random_agent(percept):
+def sight_1_random_agent(percept):
     if percept:
         return "clean"
 
     return random.choice(directions)
 
 
-mappingMemory = MappingMemory()
+def sight_5_random_agent(percept):
+    if percept[0] == "dirt":
+        return "clean"
+    elif percept[1] == "dirt":
+        return "north"
+    elif percept[2] == "dirt":
+        return "south"
+    elif percept[3] == "dirt":
+        return "east"
+    elif percept[4] == "dirt":
+        return "west"
+    else:
+        return random.choice(directions)
 
 
 def mapping_agent_sight_1(percept):
@@ -44,148 +61,170 @@ def mapping_agent_sight_1(percept):
     new_dir = mappingMemory.get_next_direction()
     if new_dir == -1:
         # This only runs if there's an unreachable dirty tile
-        return random_agent(percept)
+        return sight_1_random_agent(percept)
     return directions[new_dir]
 
 
-def mapping_agent_sight_5(percept):
-    expected_tile = mappingMemory.get_next_expected_tile_type()
-    mappingMemory.move()
+# size will be number of non-wall spaces in world
+routeplanMemory = [-1]
 
-    if expected_tile == "dirt":
-        # at the target node!
-        mappingMemory.expand_target()
 
-    # update surroundings
-    x, y = mappingMemory.get_root_pos()
-    for direction, node_type in enumerate(percept[1:]):
-        dx, dy = dir_values[direction]
-        xp, yp = (x + dx, y + dy)
-        if node_type is None:
-            mappingMemory.set_pos_type((xp, yp), "wall")
-        else:
-            mappingMemory.set_pos_type((xp, yp), node_type)
+def clear_routeplanMemory():
+    routeplanMemory.clear()
+    routeplanMemory.append(-1)
 
-    if expected_tile == "dirt":
-        # at the target node!
-        mappingMemory.retarget()
-        mappingMemory.set_root_type("clean")
+
+def tsp_no_mem_agent(percept, loss="dirt", weights=None, depth=0):
+    wold, pos = percept
+
+    x, y = pos
+    if world[x][y] == "dirt":
         return "clean"
-    else:
-        # update last timestep's move
-        mappingMemory.move()
 
-    new_dir = mappingMemory.get_next_direction()
-    if new_dir == -1:
-        # This only runs if there's an unreachable dirty tile
-        return random_agent(percept[0] == "dirt")
-    return directions[new_dir]
+    width = len(world)
+    height = len(world[0])
+    walls = [
+        (x, y) for x in range(width) for y in range(height) if world[x][y] == "wall"
+    ]
+    clean = [
+        (x, y) for x in range(width) for y in range(height) if world[x][y] == "clean"
+    ]
+    tsp = TSP(width, walls, clean, loss)
+    path = tsp.search_mapper(pos)
+    if len(path) < 2:
+        return sight_1_random_agent(False)
+    xp, yp = path[1]
+    next_dir = (xp - x, yp - y)
+    if next_dir not in dir_values:
+        return sight_1_random_agent(False)
+    return directions[dir_values.index(next_dir)]
 
+
+def tsp_agent(percept, loss="dirt", weights=None, depth=4):
+    world, pos = percept
+    if len(routeplanMemory) == 0:
+        x, y = pos
+        return sight_1_random_agent(world[x][y])
+
+    if len(routeplanMemory) == 1 and routeplanMemory[0] == -1:
+        routeplanMemory.pop()
+        size = len(world)
+        walls = [
+            (x, y) for x in range(size) for y in range(size) if world[x][y] == "wall"
+        ]
+        tsp = TSP(len(world), walls, loss)
+        route = tsp.search_path_OPT2(pos, n=depth)
+        routeplanMemory.extend([pos for _, pos in reversed(route)])
+    x, y = pos
+    if routeplanMemory and pos == routeplanMemory[-1]:
+        routeplanMemory.pop()
+        if routeplanMemory:
+            goal_x, goal_y = routeplanMemory[-1]
+            while world[goal_x][goal_y] == "clean":
+                routeplanMemory.pop()
+                if not routeplanMemory:
+                    break
+                goal_x, goal_y = routeplanMemory[-1]
+    if world[x][y] == "dirt":
+        return "clean"
+    path = A_star(world, pos, routeplanMemory[-1])
+    if path is None or len(path) < 2:
+        return sight_1_random_agent(False)
+    xp, yp = path[1]
+    next_dir = (xp - x, yp - y)
+    if next_dir not in dir_values:
+        return sight_1_random_agent(False)
+    return directions[dir_values.index(next_dir)]
+
+
+single_no_actions = sight_1_random_agent
+single_no_dirt = sight_1_random_agent
+single_yes_actions = mapping_agent_sight_1
+# TODO: update weights
+single_actions_reset = lambda: mappingMemory.reset(1, 100, 4, 2)
+single_yes_dirt = mapping_agent_sight_1
+# TODO: update weights
+single_dirt_reset = lambda: mappingMemory.reset(1, 100, 4, 2)
+
+surrounding_no_actions = sight_5_random_agent
+surrounding_no_dirt = sight_5_random_agent
+surrounding_yes_actions = lambda percept: mapping_agent_sight_5(percept, mappingMemory)
+# TODO: update weights
+surrounding_actions_reset = lambda: mappingMemory.reset(1, 100, 4, 2)
+surrounding_yes_dirt = lambda percept: mapping_agent_sight_5(percept, mappingMemory)
+# TODO: update weights
+surrounding_dirt_reset = lambda: mappingMemory.reset(1, 100, 4, 2)
+
+map_no_actions = None
+map_no_dirt = None
+map_yes_actions = lambda percept: tsp_agent(percept, loss="actions", depth=0)
+map_yes_dirt = lambda percept: tsp_agent(percept, loss="dirt", depth=0)
+map_yes_reset = clear_routeplanMemory
 
 ## input args for run: map_width, max_steps, agent_function, loss_function
 
 # run(20, 50000, random_agent, "actions")
 # TODO: better singleton management, prevent looping back on self when pushing the only possible frontier
-random.seed(9)
-mappingMemory.likely_border_weight = 2
-mappingMemory.possible_border_weight = 1
-run(20, 50000, mapping_agent_sight_5, "actions", knowledge="surrounding")
+import time
+
+seed = 0
+
+t1 = time.time()
+random.seed(seed)
+surrounding_dirt_reset()
+loss = run(
+    20, 50000, single_no_dirt, "dirt", knowledge="single", animate=False
+)
+print("single no dirt loss:", loss, "time:", time.time() - t1)
+
+t1 = time.time()
+random.seed(seed)
+surrounding_dirt_reset()
+loss = run(
+    20, 50000, surrounding_no_dirt, "dirt", knowledge="surrounding", animate=False
+)
+print("surrounding no dirt loss:", loss, "time:", time.time() - t1)
+
+t1 = time.time()
+random.seed(seed)
+surrounding_dirt_reset()
+loss = run(
+    20, 50000, single_yes_dirt, "dirt", knowledge="single", animate=False
+)
+print("single yes dirt loss:", loss, "time:", time.time() - t1)
+
+t1 = time.time()
+random.seed(seed)
+surrounding_dirt_reset()
+loss = run(
+    20, 50000, surrounding_yes_dirt, "dirt", knowledge="surrounding", animate=False
+)
+print("surrounding yes dirt loss:", loss, "time:", time.time() - t1)
+
+map_yes_reset()
+t1 = time.time()
+random.seed(seed)
+loss = run(20, 50000, map_yes_dirt, "dirt", knowledge="world", animate=False)
+print("whole world yes dirt loss:", loss, "time:", time.time() - t1)
+
+
+# t1 = time.time()
 # random.seed(0)
-# print(
-#     "daniel:",
-#     many_runs(
-#         20,
-#         50000,
-#         20,
-#         mapping_agent_sight_1,
-#         "actions",
-#         agent_reset_function=mappingMemory.reset,
-#         knowledge="single",
-#     ),
+# avg_loss = many_runs(
+#     20,
+#     50000,
+#     10,
+#     map_yes_dirt,
+#     "dirt",
+#     agent_reset_function=map_yes_reset,
+#     knowledge="world",
 # )
+# print("loss:", avg_loss, "time:", time.time() - t1)
 
-## input args for many_runs: map_width, max_steps, runs, agent_function, loss_function
-
-
-# NOTE:
-# for:
-# run_params = {
-# "map_width": 20,
-# "max_steps": 10000,
-# "runs": 40,
-# "loss_function": "dirt",
-# "knowledge": "single",
-# }
-# best hyperparams were
-
-# for
-# run_params = {
-#     "map_width": 20,
-#     "max_steps": 10000,
-#     "runs": 40,
-#     "loss_function": "actions",
-#     "knowledge": "single",
-# }
-# best hyperparams were likely=100, possible=4
-
-# seed = 0
-
-# likely_weights = (2, 4, 8, 16, 32, 64, 80, 90, 100, 110, 128)
-# possible_weights = (0, 1, 2, 3, 4, 5, 6, 7, 8, 16)
-# res = [[0 for _ in likely_weights] for _ in possible_weights]
-
-# run_params = {
-#     "map_width": 20,
-#     "max_steps": 10000,
-#     "runs": 20,
-#     "loss_function": "actions",
-#     "knowledge": "single",
-# }
-
-# random.seed(seed)
-# print(
-#     "random:",
-#     many_runs(
-#         run_params["map_width"],
-#         run_params["max_steps"],
-#         run_params["runs"],
-#         random_agent,
-#         run_params["loss_function"],
-#         knowledge=run_params["knowledge"],
-#     ),
-# )
-# for i, possible_weight in enumerate(possible_weights):
-#     for j, likely_weight in enumerate(likely_weights):
-#         mappingMemory.likely_border_weight = likely_weight
-#         mappingMemory.possible_border_weight = possible_weight
-
-#         random.seed(seed)
-#         res[i][j] = many_runs(
-#             run_params["map_width"],
-#             run_params["max_steps"],
-#             run_params["runs"],
-#             mapping_agent_sight_1,
-#             run_params["loss_function"],
-#             agent_reset_function=mappingMemory.reset,
-#             knowledge=run_params["knowledge"],
-#         )
-#         print(
-#             f"daniel with likely weight: {likely_weight} and possible weight: {possible_weight}",
-#             res[i][j],
-#         )
-
-# import matplotlib.pyplot as plt
-# import numpy as np
-
-# fig, ax = plt.subplots()
-# im = ax.imshow(res)
-
-# # Show all ticks and label them with the respective list entries
-# ax.set_xticks(np.arange(len(likely_weights)), labels=likely_weights)
-# ax.set_yticks(np.arange(len(possible_weights)), labels=possible_weights)
-# cbar = ax.figure.colorbar(im, ax=ax)
-# for i in range(len(possible_weights)):
-#     for j in range(len(likely_weights)):
-#         score = res[i][j] / 1000
-#         text = ax.text(j, i, f"{score:.3f}", ha="center", va="center", color="w")
-# plt.show()
+# t1 = time.time()
+# surrounding_loss = run(20, 50000, surrounding_yes_dirt, "dirt", knowledge="surrounding", animate=False)
+# print("surrounding loss:", surrounding_loss, "took", time.time() - t1)
+# random.seed(0)
+# t1 = time.time()
+# all_loss = run(20, 50000, map_yes_dirt, "dirt", knowledge="world", animate=False)
+# print("all loss:", all_loss, "took", time.time() - t1)
