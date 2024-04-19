@@ -5,6 +5,21 @@ from mapping_memory import MappingMemory
 from heapq import heappop, heappush
 
 
+def sight_5_random_agent(percept):
+    if percept[0] == "dirt":
+        return "clean"
+    elif percept[1] == "dirt":
+        return "north"
+    elif percept[2] == "dirt":
+        return "south"
+    elif percept[3] == "dirt":
+        return "east"
+    elif percept[4] == "dirt":
+        return "west"
+    else:
+        return random.choice(directions)
+
+
 def mapping_agent_sight_5(percept, mappingMemory):
     expected_tile = mappingMemory.get_next_expected_tile_type()
     mappingMemory.move()
@@ -34,7 +49,7 @@ def mapping_agent_sight_5(percept, mappingMemory):
 
     new_dir = mappingMemory.get_next_direction()
     if new_dir == -1:
-        # This only runs if there's an unreachable dirty tile
+        # TODO: handle this better
         return sight_5_random_agent(percept)
     return directions[new_dir]
 
@@ -170,18 +185,21 @@ class TSP:
         },
     ):
         path = []
-        # TODO: pass in optimal weights
         mapper = MappingMemory(**mapper_params)
+        vertex_len = len(self.vertices)
 
         agent_pos = start
         explored = set()
-        while len(path) < len(self.vertices):
+        max_steps = 2000
+        for _ in range(max_steps):
             x, y = agent_pos
             if agent_pos in self.vertices:
                 agent_pos_i = self.vertices.index(agent_pos)
                 next_path_node = (agent_pos_i, agent_pos)
                 if next_path_node not in path:
                     path.append(next_path_node)
+                    if len(path) >= vertex_len:
+                        return path
 
             percept = [
                 "wall"
@@ -204,6 +222,10 @@ class TSP:
                 if (xp, yp) in self.vertices:
                     agent_pos = (x + dx, y + dy)
 
+        # for missed in enumerate(self.vertices):
+        #     if missed in path:
+        #         continue
+        #     path.append(missed)
         return path
 
     def OPT2_search(self, path):
@@ -217,16 +239,9 @@ class TSP:
         rev = reversed
         cost_func = self.cost_func
 
-        # TODO: remove, debug only
-        # n = 0
         for combo in combos:
-            # to save time, only do half of the possible combinations
-            # if random.random() < 0.25:
-            #     continue
-            # n += 1
-            # if n % 1000 == 0:
-            #     print("finished combo", n)
-
+            if random.random() < 0.5:
+                continue
             # generate new possible paths by cutting vertices, and stiching back together
             a, b = combo
             if b - a == 1:
@@ -262,13 +277,9 @@ class TSP:
             combinations(range(1, len(path)), 3),
         )
 
-        # TODO: remove, debug only
         n = 0
         for combo in combos:
             n += 1
-            # if n % 1000 == 0:
-            #     print("finished combo", n)
-
             # generate new possible paths by cutting vertices, and stiching back together
             for (i, section), (j, second_dir), (k, third_dir) in path_recombinations:
                 a, b, c = combo
@@ -287,7 +298,6 @@ class TSP:
                     best_path = new_path
                     best_path_cost = new_cost
 
-        print("tried", n, "combos (*7ish)")
         return best_path, best_path_cost
 
     def search_path_OPT3(self, start, n=8):
@@ -300,23 +310,19 @@ class TSP:
 
         initial_path = self.use_mapper(start)
 
-        # TODO: debug only; remove later
-        # return initial_path
-
         path, cost = self.OPT3_search(initial_path)
         for i in range(n):
             candidate_path, candidate_cost = self.OPT3_search(path)
 
             if candidate_cost < cost or random.random() < temp:
                 path, cost = candidate_path, candidate_cost
-                print(f"iteration {i}: {cost}")
             else:
                 break
             temp *= cooling_rate
 
         return path
 
-    def search_path_OPT2(self, start, n=8):
+    def search_path_OPT2(self, start, n=8, score_cutoff=-1):
         """
         simulated annealing with 2opt
         """
@@ -326,19 +332,16 @@ class TSP:
 
         initial_path = self.search_mapper(start)
 
-        # TODO: debug only; remove later
-        # return initial_path
-
         path, cost = initial_path, self.cost_func(initial_path)
-        for i in range(n):
+        for _ in range(n):
+            if cost < score_cutoff:
+                break
             candidate_path, candidate_cost = self.OPT2_search(path)
 
             if candidate_cost < cost or random.random() < temp:
                 path, cost = candidate_path, candidate_cost
-                print(f"iteration {i}: {cost}")
             else:
                 break
             temp *= cooling_rate
 
         return path
-

@@ -132,6 +132,7 @@ def run(
             if stddraw.mousePressed():
                 exit()
             stddraw.show(0)
+    print("did run; got", loss)
     return loss
 
 

@@ -10,7 +10,7 @@ from vacuum import run, many_runs
 import random
 from mapping_memory import MappingMemory
 from agent_common import directions, dir_values
-from tsp import TSP, mapping_agent_sight_5
+from tsp import TSP, mapping_agent_sight_5, sight_5_random_agent
 from A_star import A_star
 
 # all memory objects
@@ -22,21 +22,6 @@ def sight_1_random_agent(percept):
         return "clean"
 
     return random.choice(directions)
-
-
-def sight_5_random_agent(percept):
-    if percept[0] == "dirt":
-        return "clean"
-    elif percept[1] == "dirt":
-        return "north"
-    elif percept[2] == "dirt":
-        return "south"
-    elif percept[3] == "dirt":
-        return "east"
-    elif percept[4] == "dirt":
-        return "west"
-    else:
-        return random.choice(directions)
 
 
 def mapping_agent_sight_1(percept):
@@ -74,33 +59,7 @@ def clear_routeplanMemory():
     routeplanMemory.append(-1)
 
 
-def tsp_no_mem_agent(percept, loss="dirt", weights=None, depth=0):
-    wold, pos = percept
-
-    x, y = pos
-    if world[x][y] == "dirt":
-        return "clean"
-
-    width = len(world)
-    height = len(world[0])
-    walls = [
-        (x, y) for x in range(width) for y in range(height) if world[x][y] == "wall"
-    ]
-    clean = [
-        (x, y) for x in range(width) for y in range(height) if world[x][y] == "clean"
-    ]
-    tsp = TSP(width, walls, clean, loss)
-    path = tsp.search_mapper(pos)
-    if len(path) < 2:
-        return sight_1_random_agent(False)
-    xp, yp = path[1]
-    next_dir = (xp - x, yp - y)
-    if next_dir not in dir_values:
-        return sight_1_random_agent(False)
-    return directions[dir_values.index(next_dir)]
-
-
-def tsp_agent(percept, loss="dirt", weights=None, depth=4):
+def tsp_agent(percept, loss="dirt", weights=None, depth=4, score_cutoff=150000):
     world, pos = percept
     if len(routeplanMemory) == 0:
         x, y = pos
@@ -113,7 +72,7 @@ def tsp_agent(percept, loss="dirt", weights=None, depth=4):
             (x, y) for x in range(size) for y in range(size) if world[x][y] == "wall"
         ]
         tsp = TSP(len(world), walls, loss)
-        route = tsp.search_path_OPT2(pos, n=depth)
+        route = tsp.search_path_OPT2(pos, n=depth, score_cutoff=score_cutoff)
         routeplanMemory.extend([pos for _, pos in reversed(route)])
     x, y = pos
     if routeplanMemory and pos == routeplanMemory[-1]:
@@ -158,7 +117,9 @@ surrounding_dirt_reset = lambda: mappingMemory.reset(1, 100, 4, 2)
 map_no_actions = None
 map_no_dirt = None
 map_yes_actions = lambda percept: tsp_agent(percept, loss="actions", depth=0)
-map_yes_dirt = lambda percept: tsp_agent(percept, loss="dirt", depth=0)
+map_yes_dirt = lambda percept: tsp_agent(
+    percept, loss="dirt", depth=3, score_cutoff=152000
+)
 map_yes_reset = clear_routeplanMemory
 
 ## input args for run: map_width, max_steps, agent_function, loss_function
@@ -172,9 +133,7 @@ seed = 0
 t1 = time.time()
 random.seed(seed)
 surrounding_dirt_reset()
-loss = run(
-    20, 50000, single_no_dirt, "dirt", knowledge="single", animate=False
-)
+loss = run(20, 50000, single_no_dirt, "dirt", knowledge="single", animate=False)
 print("single no dirt loss:", loss, "time:", time.time() - t1)
 
 t1 = time.time()
@@ -188,9 +147,7 @@ print("surrounding no dirt loss:", loss, "time:", time.time() - t1)
 t1 = time.time()
 random.seed(seed)
 surrounding_dirt_reset()
-loss = run(
-    20, 50000, single_yes_dirt, "dirt", knowledge="single", animate=False
-)
+loss = run(20, 50000, single_yes_dirt, "dirt", knowledge="single", animate=False)
 print("single yes dirt loss:", loss, "time:", time.time() - t1)
 
 t1 = time.time()
@@ -206,6 +163,18 @@ t1 = time.time()
 random.seed(seed)
 loss = run(20, 50000, map_yes_dirt, "dirt", knowledge="world", animate=False)
 print("whole world yes dirt loss:", loss, "time:", time.time() - t1)
+
+t1 = time.time()
+avg_loss = many_runs(
+    20,
+    50000,
+    100,
+    map_yes_dirt,
+    "dirt",
+    agent_reset_function=map_yes_reset,
+    knowledge="world",
+)
+print("for many runs of map_yes_dirt:", avg_loss, "time:", time.time() - t1)
 
 
 # t1 = time.time()
